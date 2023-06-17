@@ -1,0 +1,174 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.Forms
+
+<div class="container">
+    <h3 class="text">TMB Analyze Prios</h3>
+
+    <p>
+        <InputFile class="text" OnChange="HandleFileUpload" />
+    </p>
+
+    @if (csvData != null)
+    {
+        <h4 class="text">Results:</h4>
+        <table class="table-spacing">
+            <thead>
+                <tr>
+                    <th><button @onclick="() => SortByColumn(nameof(CharacterData.characterName))">Character Name</button></th>
+                    <th><button @onclick="() => SortByColumn(nameof(CharacterData.characterClass))">Character Class</button></th>
+                    <th><button @onclick="() => SortByColumn(nameof(CharacterData.sortOrderSum))">Sort Order Sum</button></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var (characterName, characterClass, sortOrderSum) in sortedData)
+                {
+                    <tr>
+                        <td><span style="color: @GetCharacterClassColor(characterClass)">@characterName</span></td>
+                        <td><span style="color: @GetCharacterClassColor(characterClass)">@characterClass.Replace("\"", "")</span></td>
+                        <td><span style="color: @GetCharacterClassColor(characterClass)">@sortOrderSum</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    List<(string characterName, string characterClass, int sortOrderSum)> csvData;
+    List<(string characterName, string characterClass, int sortOrderSum)> sortedData;
+    string currentSortColumn;
+    bool isAscending = true;
+
+    async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        var file = e.GetMultipleFiles().FirstOrDefault();
+        if (file != null)
+        {
+            var content = await new StreamReader(file.OpenReadStream()).ReadToEndAsync();
+            csvData = sortedData = AnalyzeCsv(content);
+        }
+    }
+
+
+    List<(string characterName, string characterClass, int sortOrderSum)> AnalyzeCsv(string content)
+    {
+        List<(string characterName, string characterClass, int sortOrderSum)> analysisData = new List<(string, string, int)>();
+
+        // Split the content into lines
+        var lines = content.Split('\n');
+
+        // Skip the header line
+        var header = lines[0];
+
+        for (int i = 1; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+
+            if (string.IsNullOrEmpty(line))
+                continue;
+
+            // Split each line by the comma to get individual cells
+            var cells = line.Split(',');
+
+            // Ensure the line has the expected number of columns
+            if (cells.Length < 3)
+                continue;
+
+            var characterName = cells[3].Trim();
+            var characterClass = cells[4].Trim();
+
+            if (string.IsNullOrEmpty(characterName) || string.IsNullOrEmpty(characterClass))
+                continue;
+
+            var sortOrder = 0;
+            int.TryParse(cells[8].Trim(), out sortOrder);
+
+            var existingData = analysisData.FirstOrDefault(d => d.characterName == characterName);
+
+            if (existingData.Equals(default((string, string, int))))
+            {
+                analysisData.Add((characterName, characterClass, sortOrder));
+            }
+            else
+            {
+                var index = analysisData.IndexOf(existingData);
+                analysisData[index] = (existingData.characterName, existingData.characterClass, existingData.sortOrderSum + sortOrder);
+            }
+        }
+
+        return analysisData;
+    }
+
+    void SortByColumn(string column)
+    {
+        if (currentSortColumn == column)
+        {
+            isAscending = !isAscending;
+        }
+        else
+        {
+            currentSortColumn = column;
+            isAscending = true;
+        }
+
+        if (column == nameof(CharacterData.characterName))
+        {
+            if (isAscending)
+                sortedData = csvData.OrderBy(d => d.characterName).ToList();
+            else
+                sortedData = csvData.OrderByDescending(d => d.characterName).ToList();
+        }
+        else if (column == nameof(CharacterData.characterClass))
+        {
+            if (isAscending)
+                sortedData = csvData.OrderBy(d => d.characterClass).ToList();
+            else
+                sortedData = csvData.OrderByDescending(d => d.characterClass).ToList();
+        }
+        else if (column == nameof(CharacterData.sortOrderSum))
+        {
+            if (isAscending)
+                sortedData = csvData.OrderBy(d => d.sortOrderSum).ToList();
+            else
+                sortedData = csvData.OrderByDescending(d => d.sortOrderSum).ToList();
+        }
+    }
+
+    private string GetCharacterClassColor(string characterClass)
+    {
+        switch (characterClass)
+        {
+            case "Warrior":
+                return "#C69B6D";
+            case "Mage":
+                return "#3FC7EB";
+            case "Rogue":
+                return "#FFF468";
+            case "Paladin":
+                return "#F48CBA";
+            case "Priest":
+                return "#FFFFFF";
+            case "Shaman":
+                return "#0070DD";
+            case "Hunter":
+                return "#AAD372";
+            case "Warlock":
+                return "#8788EE";
+            case "Druid":
+                return "#FF7C0A";
+            case "\"Death Knight\"":
+                return "#C41E3A";
+            // Add more cases for other character classes
+            default:
+                return "white"; // Default color
+        }
+    }
+
+
+    public class CharacterData
+    {
+        public string characterName { get; set; }
+        public string characterClass { get; set; }
+        public int sortOrderSum { get; set; }
+    }
+}
