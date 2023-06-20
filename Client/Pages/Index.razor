@@ -4,9 +4,27 @@
 <div class="container">
     <h3 class="text">TMB Analyze Prios</h3>
 
-    <p>
-        <InputFile class="text" OnChange="HandleFileUpload" />
-    </p>
+    <div class="input-group">
+        <div>
+            <p class="tiny-text">Guild > Exports > Download [Just Prios]</p>
+            <InputFile class="text" OnChange="HandleFileUpload" />
+        </div>
+        <div>
+            <p class="tiny-text">Enter IDs of items you want to exclude:</p>
+            <input type="number" @bind="@newNumber" />
+            <button class="ghost-button" @onclick="AddNumber">Add</button>
+        </div>
+    </div>
+
+    <div class="number-box">
+        @foreach (var number in excludedItemIds)
+        {
+            <div class="number">
+                @number
+                <button @onclick="() => RemoveNumber(number)">X</button>
+            </div>
+        }
+    </div>
 
     @if (csvData != null)
     {
@@ -14,30 +32,152 @@
         <table class="table-spacing">
             <thead>
                 <tr>
-                    <th><button @onclick="() => SortByColumn(nameof(CharacterData.characterName))">Character Name</button></th>
-                    <th><button @onclick="() => SortByColumn(nameof(CharacterData.characterClass))">Character Class</button></th>
-                    <th><button @onclick="() => SortByColumn(nameof(CharacterData.sortOrderSum))">Sort Order Sum</button></th>
+                    <th style="text-align: left;"><button @onclick="() => SortByColumn(nameof(Character.Name))">Character Name</button></th>
+                    <th style="text-align: left;"><button @onclick="() => SortByColumn(nameof(Character.Class))">Class</button></th>
+                    <th style="text-align: left;"><button @onclick="() => SortByColumn(nameof(Character.SortOrderSum))">Priority Sum</button></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var (characterName, characterClass, sortOrderSum) in sortedData)
+                @foreach (var entry in sortedData)
                 {
-                    <tr>
-                        <td><span style="color: @GetCharacterClassColor(characterClass)">@characterName</span></td>
-                        <td><span style="color: @GetCharacterClassColor(characterClass)">@characterClass.Replace("\"", "")</span></td>
-                        <td><span style="color: @GetCharacterClassColor(characterClass)">@sortOrderSum</span></td>
+                    <tr @onclick="() => ToggleCharacterDetails(entry)" @onmouseover="() => ToggleOverlay(true, entry)" @onmouseout="() => ToggleOverlay(false, entry)">
+                        <td>
+                                <div class="row">
+                                <span style="color: @GetCharacterClassColor(entry.Class)">@entry.Name</span>
+                                <div class="overlay" style="display: @GetOverlayDisplay(entry)"></div>
+                                </div>
+                        </td>
+                        <td>
+                                <div class="row">
+                                <span style="color: @GetCharacterClassColor(entry.Class)">@entry.Class</span>
+                                <div class="overlay" style="display: @GetOverlayDisplay(entry)"></div>
+                                </div>
+                        </td>
+                        <td>
+                                <div class="row">
+                                <span style="color: @GetCharacterClassColor(entry.Class)">@entry.SortOrderSum</span>
+                                <div class="overlay" style="display: @GetOverlayDisplay(entry)"></div>
+                                </div>
+                        </td>
                     </tr>
+                    @if (entry.ShowDetails)
+                    {
+                        <tr>
+                            <td colspan="3">
+                                <table class="item-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align: left;" class="text">Item</th>
+                                            <th style="text-align: left;" class="text">Priority</th>
+                                            <th style="text-align: left;" class="text">Received</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var item in entry.Items)
+                                        {
+                                            <tr>
+                                                <td class="text">@item.ItemName</td>
+                                                <td class="text">@item.SortOrder</td>
+                                                <td class="text">@(string.IsNullOrEmpty(item.ReceivedAt) ? "No" : "Yes")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
     }
 </div>
 
+<style>
+    .row {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.3);
+        display: none;
+    }
+
+        .overlay.active {
+            display: block;
+        }
+
+    .number-box {
+        display: flex;
+        flex-wrap: wrap;
+        padding: 10px;
+        margin-top: 10px;
+        max-width: 600px;
+    }
+
+        .number-box .number {
+            margin: 2px;
+            padding: 2px;
+            background-color: #E9E8E7;
+            border-radius: 2px;
+        }
+
+    .input-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .tiny-text {
+        font-size: 12px;
+        color: #E9E8E7;
+    }
+
+    .ghost-button {
+        border: 0px;
+    }
+</style>
+
 @code {
-    List<(string characterName, string characterClass, int sortOrderSum)> csvData;
-    List<(string characterName, string characterClass, int sortOrderSum)> sortedData;
+    List<Character> csvData;
+
+    class CsvEntry
+    {
+        public string Type { get; set; }
+        public string RaidGroupName { get; set; }
+        public string MemberName { get; set; }
+        public string CharacterName { get; set; }
+        public string CharacterClass { get; set; }
+        public string CharacterIsAlt { get; set; }
+        public string CharacterInactiveAt { get; set; }
+        public string CharacterNote { get; set; }
+        public int SortOrder { get; set; }
+        public string ItemName { get; set; }
+        public int ItemId { get; set; }
+        public string IsOffspec { get; set; }
+        public string Note { get; set; }
+        public string ReceivedAt { get; set; }
+        public int ImportId { get; set; }
+        public string ItemNote { get; set; }
+        public string ItemPrioNote { get; set; }
+        public int ItemTier { get; set; }
+        public string ItemTierLabel { get; set; }
+        public string CreatedAt { get; set; }
+        public string UpdatedAt { get; set; }
+        public bool ShowDetails = false;
+    }
+
+    List<Character> sortedData;
+
     string currentSortColumn;
     bool isAscending = true;
+    string cachedCsv;
 
     async Task HandleFileUpload(InputFileChangeEventArgs e)
     {
@@ -45,14 +185,16 @@
         if (file != null)
         {
             var content = await new StreamReader(file.OpenReadStream()).ReadToEndAsync();
-            csvData = sortedData = AnalyzeCsv(content);
+            cachedCsv = content;
+            csvData = sortedData = ProcessCharacters(content);
         }
     }
 
-
-    List<(string characterName, string characterClass, int sortOrderSum)> AnalyzeCsv(string content)
+    List<CsvEntry> ProcessCsv(string rawContent)
     {
-        List<(string characterName, string characterClass, int sortOrderSum)> analysisData = new List<(string, string, int)>();
+        List<CsvEntry> csvEntries = new List<CsvEntry>();
+
+        string content = SanitizeCsv(rawContent);
 
         // Split the content into lines
         var lines = content.Split('\n');
@@ -71,32 +213,135 @@
             var cells = line.Split(',');
 
             // Ensure the line has the expected number of columns
-            if (cells.Length < 3)
+            if (cells.Length < 21)
+                continue;
+
+            CsvEntry csvEntry = new CsvEntry
+                {
+                    Type = cells[0].Trim(),
+                    RaidGroupName = cells[1].Trim(),
+                    MemberName = cells[2].Trim(),
+                    CharacterName = cells[3].Trim(),
+                    CharacterClass = cells[4].Trim().Replace("\"", ""),
+                    CharacterIsAlt = cells[5].Trim(),
+                    CharacterInactiveAt = cells[6].Trim(),
+                    CharacterNote = cells[7].Trim(),
+                    SortOrder = string.IsNullOrEmpty(cells[8].Trim()) ? -1 : int.Parse(cells[8].Trim()),
+                    ItemName = cells[9].Trim(),
+                    ItemId = string.IsNullOrEmpty(cells[10].Trim()) ? -1 : int.Parse(cells[10].Trim()),
+                    IsOffspec = cells[11].Trim(),
+                    Note = cells[12].Trim(),
+                    ReceivedAt = cells[13].Trim(),
+                    ImportId = string.IsNullOrEmpty(cells[14].Trim()) ? -1 : int.Parse(cells[14].Trim()),
+                    ItemNote = cells[15].Trim(),
+                    ItemPrioNote = cells[16].Trim(),
+                    ItemTier = string.IsNullOrEmpty(cells[17].Trim()) ? -1 : int.Parse(cells[17].Trim()),
+                    ItemTierLabel = cells[18].Trim(),
+                    CreatedAt = cells[19].Trim(),
+                    UpdatedAt = cells[20].Trim()
+                };
+
+            csvEntries.Add(csvEntry);
+        }
+
+        return ConsolidateCsvEntries(csvEntries);
+    }
+
+    string SanitizeCsv(string rawContent)
+    {
+        rawContent = rawContent.Replace("Voldrethar, Dark Blade of Oblivion", "Voldrethar Dark Blade of Oblivion");
+        return rawContent;
+    }
+
+    List<CsvEntry> ConsolidateCsvEntries(List<CsvEntry> csvEntries)
+    {
+        List<CsvEntry> consolidatedEntries = new List<CsvEntry>();
+
+        var groupedEntries = csvEntries.GroupBy(entry => entry.CharacterName);
+
+        foreach (var group in groupedEntries)
+        {
+            var characterName = group.Key;
+            var sortOrder = group.Sum(entry => entry.SortOrder);
+            var characterClass = group.First().CharacterClass;
+
+            consolidatedEntries.Add(new CsvEntry
+                {
+                    CharacterName = characterName,
+                    CharacterClass = characterClass,
+                    SortOrder = sortOrder
+                });
+        }
+
+        return consolidatedEntries;
+    }
+
+    List<Character> ProcessCharacters(string rawContent)
+    {
+        string content = SanitizeCsv(rawContent);
+
+        List<Character> characterList = new List<Character>();
+
+        // Split the content into lines
+        var lines = content.Split('\n');
+
+        // Skip the header line
+        var header = lines[0];
+
+        for (int i = 1; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+
+            if (string.IsNullOrEmpty(line))
+                continue;
+
+            // Split each line by the comma to get individual cells
+            var cells = line.Split(',');
+
+            // Ensure the line has the expected number of columns
+            if (cells.Length < 21)
+                continue;
+
+            var itemId = 0;
+            int.TryParse(cells[10].Trim(), out itemId);
+
+            // Skip processing if the item ID is in the excluded list
+            if (excludedItemIds.Contains(itemId))
                 continue;
 
             var characterName = cells[3].Trim();
-            var characterClass = cells[4].Trim();
+            var characterClass = cells[4].Trim().Replace("\"", "");
+            var sortOrder = int.Parse(cells[8].Trim());
+            var itemName = cells[9].Trim();
+            var receivedAt = cells[13].Trim();
 
-            if (string.IsNullOrEmpty(characterName) || string.IsNullOrEmpty(characterClass))
-                continue;
+            var existingCharacter = characterList.FirstOrDefault(c => c.Name == characterName);
 
-            var sortOrder = 0;
-            int.TryParse(cells[8].Trim(), out sortOrder);
-
-            var existingData = analysisData.FirstOrDefault(d => d.characterName == characterName);
-
-            if (existingData.Equals(default((string, string, int))))
+            if (existingCharacter == null)
             {
-                analysisData.Add((characterName, characterClass, sortOrder));
+                var character = new Character
+                    {
+                        Name = characterName,
+                        Class = characterClass,
+                        SortOrderSum = sortOrder,
+                        ShowDetails = false,
+                        Items = new List<SimplifiedCsvEntry>
+                        {
+                            new SimplifiedCsvEntry { ItemName = itemName, SortOrder = sortOrder, ReceivedAt = receivedAt }
+                        }
+                    };
+
+                characterList.Add(character);
             }
             else
             {
-                var index = analysisData.IndexOf(existingData);
-                analysisData[index] = (existingData.characterName, existingData.characterClass, existingData.sortOrderSum + sortOrder);
+                existingCharacter.SortOrderSum += sortOrder;
+
+                existingCharacter.Items.Add(new SimplifiedCsvEntry { ItemName = itemName, SortOrder = sortOrder, ReceivedAt = receivedAt });
             }
         }
 
-        return analysisData;
+        return characterList;
     }
 
     void SortByColumn(string column)
@@ -111,26 +356,26 @@
             isAscending = true;
         }
 
-        if (column == nameof(CharacterData.characterName))
+        if (column == nameof(Character.Name))
         {
             if (isAscending)
-                sortedData = csvData.OrderBy(d => d.characterName).ToList();
+                sortedData = csvData.OrderBy(d => d.Name).ToList();
             else
-                sortedData = csvData.OrderByDescending(d => d.characterName).ToList();
+                sortedData = csvData.OrderByDescending(d => d.Name).ToList();
         }
-        else if (column == nameof(CharacterData.characterClass))
+        else if (column == nameof(Character.Class))
         {
             if (isAscending)
-                sortedData = csvData.OrderBy(d => d.characterClass).ToList();
+                sortedData = csvData.OrderBy(d => d.Class).ToList();
             else
-                sortedData = csvData.OrderByDescending(d => d.characterClass).ToList();
+                sortedData = csvData.OrderByDescending(d => d.Class).ToList();
         }
-        else if (column == nameof(CharacterData.sortOrderSum))
+        else if (column == nameof(Character.SortOrderSum))
         {
             if (isAscending)
-                sortedData = csvData.OrderBy(d => d.sortOrderSum).ToList();
+                sortedData = csvData.OrderBy(d => d.SortOrderSum).ToList();
             else
-                sortedData = csvData.OrderByDescending(d => d.sortOrderSum).ToList();
+                sortedData = csvData.OrderByDescending(d => d.SortOrderSum).ToList();
         }
     }
 
@@ -156,7 +401,7 @@
                 return "#8788EE";
             case "Druid":
                 return "#FF7C0A";
-            case "\"Death Knight\"":
+            case "Death Knight":
                 return "#C41E3A";
             // Add more cases for other character classes
             default:
@@ -164,11 +409,52 @@
         }
     }
 
-
-    public class CharacterData
+    void ToggleCharacterDetails(Character character)
     {
-        public string characterName { get; set; }
-        public string characterClass { get; set; }
-        public int sortOrderSum { get; set; }
+        character.ShowDetails = !character.ShowDetails;
+    }
+
+    void ToggleOverlay(bool showOverlay, Character character)
+    {
+        character.IsOverlayActive = showOverlay;
+    }
+
+    string GetOverlayDisplay(Character character)
+    {
+        return character.IsOverlayActive ? "block" : "none";
+    }
+
+    List<int> excludedItemIds = new List<int>();
+    int newNumber;
+
+    void AddNumber()
+    {
+        if(excludedItemIds.Contains(newNumber)) return;
+        excludedItemIds.Add(newNumber);
+        newNumber = 0;
+        if (!String.IsNullOrEmpty(cachedCsv)) { csvData = sortedData = ProcessCharacters(cachedCsv); }
+    }
+
+    void RemoveNumber(int number)
+    {
+        excludedItemIds.Remove(number);
+        if (!String.IsNullOrEmpty(cachedCsv)) { csvData = sortedData = ProcessCharacters(cachedCsv); }
+    }
+
+    class Character
+    {
+        public string Name { get; set; }
+        public string Class { get; set; }
+        public int SortOrderSum { get; set; }
+        public bool ShowDetails { get; set; }
+        public List<SimplifiedCsvEntry> Items { get; set; }
+        public bool IsOverlayActive { get; set; }
+    }
+
+    class SimplifiedCsvEntry
+    {
+        public string ItemName { get; set; }
+        public int SortOrder { get; set; }
+        public string ReceivedAt { get; set; }
     }
 }
