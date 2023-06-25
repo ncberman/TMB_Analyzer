@@ -44,7 +44,7 @@ h1:focus {
     height: 100vh; /* Set the container height to occupy the full viewport height */
     width: 100%;
     background-color: #292017;
-    background-image: url('TMB_Analyzer/images/greymap.jpg');
+    background-image: url('images/greymap.jpg');
     background-repeat: no-repeat;
     background-position: top;
     background-size: cover;
