@@ -60,6 +60,13 @@ h1:focus {
     box-sizing: border-box;
 }
 
+.subtable-spacing th, td {
+    border-collapse: separate;
+    padding: 0px 20px 0px 0px;
+    margin: 0;
+    box-sizing: border-box;
+}
+
 .text {
     color: #E9E8E7;
 }

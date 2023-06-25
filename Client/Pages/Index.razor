@@ -1,12 +1,13 @@
 ﻿@page "/"
 @using Microsoft.AspNetCore.Components.Forms
+@inject HttpClient httpClient
 
 <div class="container">
     <h3 class="text">TMB Analyze Prios</h3>
 
     <div class="input-group">
         <div>
-            <p class="tiny-text">Guild > Exports > Download [Just Prios]</p>
+            <p class="tiny-text"><a href="https://thatsmybis.com/9837/he-hate-me/export" target="_blank">Guild Exports</a> > Download [Just Prios]</p>
             <InputFile class="text" OnChange="HandleFileUpload" />
         </div>
         <div>
@@ -17,7 +18,7 @@
     </div>
 
     <div class="number-box">
-        @foreach (var number in excludedItemIds)
+        @foreach (var number in customExclusions)
         {
             <div class="number">
                 @number
@@ -25,16 +26,23 @@
             </div>
         }
     </div>
+    <p class="small-text">Choose which loot-tables you want to include</p>
+    <div class="number-box">
+        @foreach (var preset in inclusionPresets.Values)
+        {
+            <button class="preset-button @(!preset.IsIncluded ? "active" : "")" @onclick="() => TogglePresetInclusion(preset.InstanceName)">@preset.InstanceName.Replace("\"","")</button>
+        }
+    </div>
 
     @if (csvData != null)
     {
-        <h4 class="text">Results:</h4>
         <table class="table-spacing">
             <thead>
                 <tr>
-                    <th style="text-align: left;"><button @onclick="() => SortByColumn(nameof(Character.Name))">Character Name</button></th>
-                    <th style="text-align: left;"><button @onclick="() => SortByColumn(nameof(Character.Class))">Class</button></th>
-                    <th style="text-align: left;"><button @onclick="() => SortByColumn(nameof(Character.SortOrderSum))">Priority Sum</button></th>
+                    <th class="small-text" style="text-align: left; min-width: 160px;">Character Name</th>
+                    <th style="text-align: left; min-width: 160px;"><button @onclick="() => SortByColumn(nameof(Character.Class))">Sort by Class</button></th>
+                    <th style="text-align: center; min-width: 160px;"><button @onclick="() => SortByColumn(nameof(Character.SortOrderSum))">Sort by Priority Sum</button></th>
+                    <th class="small-text" style="text-align: center; min-width: 140px;"># of Items Prio'd</th>
                 </tr>
             </thead>
             <tbody>
@@ -54,31 +62,37 @@
                                 </div>
                         </td>
                         <td>
-                                <div class="row">
-                                <span style="color: @GetCharacterClassColor(entry.Class)">@entry.SortOrderSum</span>
+                            <div class="row" style="justify-content: center;">
+                                <span style="color: @GetCharacterClassColor(entry.Class);">@entry.SortOrderSum</span>
                                 <div class="overlay" style="display: @GetOverlayDisplay(entry)"></div>
                                 </div>
+                        </td>
+                        <td>
+                            <div class="row" style="justify-content: center;">
+                                <span style="color: @GetCharacterClassColor(entry.Class); text-align: center;">@entry.Items.Count</span>
+                                <div class="overlay" style="display: @GetOverlayDisplay(entry)"></div>
+                            </div>
                         </td>
                     </tr>
                     @if (entry.ShowDetails)
                     {
                         <tr>
-                            <td colspan="3">
-                                <table class="item-table">
+                            <td colspan="4">
+                                <table class="subtable-spacing">
                                     <thead>
                                         <tr>
-                                            <th style="text-align: left;" class="text">Item</th>
-                                            <th style="text-align: left;" class="text">Priority</th>
-                                            <th style="text-align: left;" class="text">Received</th>
+                                            <th style="text-align: left; min-width: 120px;" class="text">Item</th>
+                                            <th style="text-align: center; min-width: 120px;" class="text">Priority</th>
+                                            <th style="text-align: center; min-width: 120px;" class="text">Received</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @foreach (var item in entry.Items)
                                         {
                                             <tr>
-                                                <td class="text">@item.ItemName</td>
-                                                <td class="text">@item.SortOrder</td>
-                                                <td class="text">@(string.IsNullOrEmpty(item.ReceivedAt) ? "No" : "Yes")</td>
+                                                <td class="text" style="align-content: center;">@item.ItemName.Replace("\"","")</td>
+                                                <td class="text" style="text-align: center;">@item.SortOrder of @GetCharacterCountByItemName(item.ItemName)</td>
+                                                <td class="text" style="text-align: center;">@(string.IsNullOrEmpty(item.ReceivedAt) ? "No" : "Yes")</td>
                                             </tr>
                                         }
                                     </tbody>
@@ -119,6 +133,7 @@
         padding: 10px;
         margin-top: 10px;
         max-width: 600px;
+        justify-content: center;
     }
 
         .number-box .number {
@@ -139,9 +154,32 @@
         color: #E9E8E7;
     }
 
+    .small-text {
+        font-size: 16px;
+        color: #E9E8E7;
+    }
+
+    .subtable-text {
+        text-align: center;
+    }
+
     .ghost-button {
         border: 0px;
     }
+
+    .preset-button {
+        /* Styles for default button appearance */
+        background-color: #00CB22;
+        color: black;
+    }
+
+        .preset-button.active {
+            /* Styles for pressed or active button appearance */
+            /* Adjust these styles to match your desired look */
+            background-color: #5A0000;
+            color: white;
+            /* Other styles... */
+        }
 </style>
 
 @code {
@@ -149,35 +187,63 @@
 
     class CsvEntry
     {
-        public string Type { get; set; }
-        public string RaidGroupName { get; set; }
-        public string MemberName { get; set; }
-        public string CharacterName { get; set; }
-        public string CharacterClass { get; set; }
-        public string CharacterIsAlt { get; set; }
-        public string CharacterInactiveAt { get; set; }
-        public string CharacterNote { get; set; }
+        public string? Type { get; set; }
+        public string? RaidGroupName { get; set; }
+        public string? MemberName { get; set; }
+        public string? CharacterName { get; set; }
+        public string? CharacterClass { get; set; }
+        public string? CharacterIsAlt { get; set; }
+        public string? CharacterInactiveAt { get; set; }
+        public string? CharacterNote { get; set; }
         public int SortOrder { get; set; }
-        public string ItemName { get; set; }
+        public string? ItemName { get; set; }
         public int ItemId { get; set; }
-        public string IsOffspec { get; set; }
-        public string Note { get; set; }
-        public string ReceivedAt { get; set; }
+        public string? IsOffspec { get; set; }
+        public string? Note { get; set; }
+        public string? ReceivedAt { get; set; }
         public int ImportId { get; set; }
-        public string ItemNote { get; set; }
-        public string ItemPrioNote { get; set; }
+        public string? ItemNote { get; set; }
+        public string? ItemPrioNote { get; set; }
         public int ItemTier { get; set; }
-        public string ItemTierLabel { get; set; }
-        public string CreatedAt { get; set; }
-        public string UpdatedAt { get; set; }
+        public string? ItemTierLabel { get; set; }
+        public string? CreatedAt { get; set; }
+        public string? UpdatedAt { get; set; }
         public bool ShowDetails = false;
     }
 
     List<Character> sortedData;
+    Dictionary<string, InclusionPreset> inclusionPresets = new Dictionary<string, InclusionPreset>();
 
-    string currentSortColumn;
+
+    string? currentSortColumn;
     bool isAscending = true;
-    string cachedCsv;
+    string? cachedCsv;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPresets();
+    }
+
+    string test = "empty";
+
+    private async Task LoadPresets()
+    {
+        try
+        {
+            var response = await httpClient.GetAsync("files/wotlk-loot-table.csv");
+            response.EnsureSuccessStatusCode();
+
+            var csvContent = await ReadContentAsStringAsync(response);
+            inclusionPresets = ParsePresets(csvContent);
+
+            // Perform any further processing with the loaded presets
+            // e.g., populate a dropdown list or apply filters
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error loading presets: " + ex.Message + " " + ex.StackTrace);
+        }
+    }
 
     async Task HandleFileUpload(InputFileChangeEventArgs e)
     {
@@ -250,6 +316,12 @@
     string SanitizeCsv(string rawContent)
     {
         rawContent = rawContent.Replace("Voldrethar, Dark Blade of Oblivion", "Voldrethar Dark Blade of Oblivion");
+        rawContent = rawContent.Replace("Valius, Gavel of the Lightbringer", "Valius Gavel of the Lightbringer");
+        rawContent = rawContent.Replace("Troggbane, Axe of the Frostborne King", "Troggbane Axe of the Frostborne King");
+        rawContent = rawContent.Replace("Tel'thas, Dagger of the Blood King", "Tel'thas Dagger of the Blood King");
+        rawContent = rawContent.Replace("Stormfury, Black Blade of the Betrayer", "Stormfury Black Blade of the Betrayer");
+        rawContent = rawContent.Replace("Pugius, Fist of Defiance", "Pugius Fist of Defiance");
+        rawContent = rawContent.Replace("Halion, Staff of Forgotten Love", "Halion Staff of Forgotten Love");
         return rawContent;
     }
 
@@ -279,6 +351,7 @@
     List<Character> ProcessCharacters(string rawContent)
     {
         string content = SanitizeCsv(rawContent);
+        test = "Processing Characters";
 
         List<Character> characterList = new List<Character>();
 
@@ -306,8 +379,10 @@
             int.TryParse(cells[10].Trim(), out itemId);
 
             // Skip processing if the item ID is in the excluded list
-            if (excludedItemIds.Contains(itemId))
+            if (customExclusions.Contains(itemId))
                 continue;
+
+            if (!ShouldContinueProcessing(itemId)) continue;
 
             var characterName = cells[3].Trim();
             var characterClass = cells[4].Trim().Replace("\"", "");
@@ -342,6 +417,24 @@
         }
 
         return characterList;
+    }
+
+    bool ShouldContinueProcessing(int itemId)
+    {
+        // Check if the itemId is not present in any of the presets or if the preset is included
+        foreach (var preset in inclusionPresets.Values)
+        {
+            if (preset.ItemIds.Contains(itemId) && preset.IsIncluded)
+            {
+                // Stop processing if itemId is found in any preset and the preset is excluded
+                Console.WriteLine("itemId {0} is in the inclusion list", itemId.ToString());
+                return true;
+            }
+        }
+
+        // Continue processing if itemId is not found in any presets or if all relevant presets are included
+        Console.WriteLine("itemId {0} is NOT in the inclusion list", itemId.ToString());
+        return false;
     }
 
     void SortByColumn(string column)
@@ -424,37 +517,151 @@
         return character.IsOverlayActive ? "block" : "none";
     }
 
-    List<int> excludedItemIds = new List<int>();
+    List<int> customExclusions = new List<int>();
     int newNumber;
 
     void AddNumber()
     {
-        if(excludedItemIds.Contains(newNumber)) return;
-        excludedItemIds.Add(newNumber);
+        if(customExclusions.Contains(newNumber)) return;
+        customExclusions.Add(newNumber);
         newNumber = 0;
         if (!String.IsNullOrEmpty(cachedCsv)) { csvData = sortedData = ProcessCharacters(cachedCsv); }
     }
 
     void RemoveNumber(int number)
     {
-        excludedItemIds.Remove(number);
+        customExclusions.Remove(number);
         if (!String.IsNullOrEmpty(cachedCsv)) { csvData = sortedData = ProcessCharacters(cachedCsv); }
     }
 
     class Character
     {
-        public string Name { get; set; }
-        public string Class { get; set; }
+        public string? Name { get; set; }
+        public string? Class { get; set; }
         public int SortOrderSum { get; set; }
         public bool ShowDetails { get; set; }
-        public List<SimplifiedCsvEntry> Items { get; set; }
+        public List<SimplifiedCsvEntry>? Items { get; set; }
         public bool IsOverlayActive { get; set; }
     }
 
     class SimplifiedCsvEntry
     {
-        public string ItemName { get; set; }
+        public string? ItemName { get; set; }
         public int SortOrder { get; set; }
-        public string ReceivedAt { get; set; }
+        public string? ReceivedAt { get; set; }
+    }
+
+    private Dictionary<string, InclusionPreset> ParsePresets(string csvContent)
+    {
+        Dictionary<string, InclusionPreset> presets = new Dictionary<string, InclusionPreset>();
+
+        var lines = csvContent.Split('\n');
+
+        for (int i = 1; i < lines.Length; i++) // Start from index 1 to skip the header line
+        {
+            var line = lines[i].Trim();
+
+            if (string.IsNullOrEmpty(line))
+                continue;
+
+            var cells = line.Split(',');
+
+            if (cells.Length >= 6)
+            {
+                var instanceName = cells[0].Trim();
+                var sourceName = cells[1].Trim();
+                var itemName = cells[2].Trim();
+
+                var csvOffset = 0;
+                if (itemName.StartsWith("\"") && !itemName.EndsWith("\""))
+                {
+                    // Combine columns 2 and 3 to get the correct item_name
+                    var combinedName = cells[2].TrimEnd('"') + "," + cells[3].TrimStart('"');
+                    itemName = combinedName.Trim('"');
+                    csvOffset = 1;
+                }
+
+                var itemQuality = cells[3+csvOffset].Trim();
+                int itemId = int.Parse(cells[4 + csvOffset].Trim());
+                var url = cells[5 + csvOffset].Trim();
+
+                if (!presets.ContainsKey(instanceName))
+                {
+                    var preset = new InclusionPreset
+                        {
+                            InstanceName = instanceName,
+                            ItemIds = new List<int>(),
+                            IsIncluded = false
+                        };
+                    preset.ItemIds.Add(itemId);
+
+                    presets.Add(instanceName, preset);
+                } else
+                {
+                    presets[instanceName].ItemIds.Add(itemId);
+                }
+            }
+        }
+
+        return presets;
+    }
+
+    private int GetCharacterCountByItemName(string itemname)
+    {
+        int count = 0;
+
+        foreach (var character in csvData)
+        {
+            if (character.Items != null && character.Items.Any(item => item.ItemName == itemname))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private async Task<string> ReadContentAsStringAsync(HttpResponseMessage response)
+    {
+        using (var stream = await response.Content.ReadAsStreamAsync())
+        using (var reader = new StreamReader(stream))
+        {
+            return await reader.ReadToEndAsync();
+        }
+    }
+
+    class InclusionPreset
+    {
+        public string? InstanceName { get; set; }
+        public List<int> ItemIds { get; set; }
+        public bool IsIncluded { get; set; }
+    }
+
+    void TogglePresetInclusion(string instanceName)
+    {
+        Console.WriteLine("TOGGLE {0}", instanceName);
+        foreach(var name in inclusionPresets.Keys)
+        {
+            Console.WriteLine(name);
+        }
+        if (inclusionPresets.ContainsKey(instanceName))
+        {
+            Console.WriteLine("DING DING DING");
+            Console.WriteLine(inclusionPresets[instanceName].ItemIds.Count);
+            inclusionPresets[instanceName].IsIncluded = !inclusionPresets[instanceName].IsIncluded;
+            if (inclusionPresets[instanceName].IsIncluded)
+            {
+                foreach(var id in inclusionPresets[instanceName].ItemIds)
+                {
+                    Console.WriteLine("Item {0} SHOULD be in inclusion list", id.ToString());
+                    ShouldContinueProcessing(id);
+                }
+            }
+        }
+
+        if (!String.IsNullOrEmpty(cachedCsv))
+        {
+            csvData = sortedData = ProcessCharacters(cachedCsv);
+        }
     }
 }
